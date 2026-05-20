@@ -6,7 +6,7 @@ import matplotlib.pyplot as plt
 import seaborn as sns
 
 # Kurumsal Sayfa Mimarisi
-st.set_page_config(page_title="Advanced Risk Matrix", layout="wide")
+st.set_page_config(page_title="Risk Intelligence Hub", layout="wide")
 
 # Model Yükleme
 try:
@@ -16,7 +16,7 @@ except:
 
 # Başlık Paneli (Tier-1 Bankacılık Standartlarında UI)
 st.title("🏛️ Institutional Credit Risk Hub & Advanced Simulation Lab")
-st.markdown("_Merkezi Risk Yönetimi, Makro Stress-Testing ve Duyarlılık Analiz Platformu - V3_")
+st.markdown("_Merkezi Risk Yönetimi, Makro Stress-Testing ve Duyarlılık Analiz Platformu - Ultimate Sürüm_")
 st.write("---")
 
 # Sol Panel: Girdiler ve Senaryolar
@@ -31,12 +31,11 @@ with col1:
         ["Normal Ekonomik Şartlar", "Sistemik Resesyon (Daralma)", "Hiperenflasyon & Döviz Şoku", "Ekonomik Büyüme (Genişleme)"]
     )
     
-    # Enflasyon ve Kur Şoku Dinamik Girdileri
     enflasyon_orani = st.slider("Yıllık Enflasyon Beklentisi (%)", 10, 150, value=40 if "Normal" in makro_durum else (120 if "Hiperenflasyon" in makro_durum else 70))
     kur_volatilitesi = st.slider("Döviz Kuru Oynaklığı (Aylık %)", 1, 50, value=5 if "Normal" in makro_durum else (35 if "Hiperenflasyon" in makro_durum else 15))
     
     st.write("---")
-    st.subheader("📊 2. Müşteri Finansal Profili")
+    st.subheader("📊 2. Finansal Profil Kontrolleri")
     gelir = st.number_input("Yıllık Brüt Gelir ($)", 20000, 1000000, value=95000, step=5000)
     skor = st.slider("Kredi Skoru (FICO)", 300, 850, value=670)
     borc = st.slider("Mevcut DTI (Borç/Gelir Oranı)", 0.0, 1.0, value=0.30, step=0.01)
@@ -56,27 +55,25 @@ with col2:
     st.header("📊 Kurumsal Karar ve Analitik Çıktılar")
     
     if analiz_butonu:
-        # 1. MAKRO ŞOK ETKİSİ HESAPLAMA MOTORU (Açığı Kapatan İktisadi Kısım)
-        # Enflasyon harcanabilir geliri eritir, kur şoku borçluluk algısını artırır
+        # 1. MAKRO ŞOK ETKİSİ HESAPLAMA MOTORU
         enflasyon_etkisi = (enflasyon_orani / 100) * 0.15
         kur_etkisi = (kur_volatilitesi / 100) * 0.20
         
-        aylik_gelir = (gelir / 12) * (1 - enflasyon_etkisi) # Enflasyondan arındırılmış reel harcanabilir gelir
-        mevcut_aylik_borc = (gelir / 12) * borc * (1 + kur_etkisi) # Kur baskılı borç yükü
+        aylik_gelir = (gelir / 12) * (1 - enflasyon_etkisi) 
+        mevcut_aylik_borc = (gelir / 12) * borc * (1 + kur_etkisi) 
         
         # Dinamik Faiz Algoritması
         base_faiz = 0.10 if kredi_turu == "Ticari Kredi" else (0.07 if kredi_turu == "Konut Kredisi" else 0.14)
-        base_faiz += (enflasyon_orani / 200) # Enflasyon primi faize eklenir
+        base_faiz += (enflasyon_orani / 200)
             
         # Taksit ve Yeni DTI Hesaplama
         aylik_faiz = base_faiz / 12
         taksit = (talep_edilen * aylik_faiz) / (1 - (1 + aylik_faiz) ** (-vade))
         yeni_dti = (mevcut_aylik_borc + taksit) / aylik_gelir
         
-        # 2. DİNAMİK RİSK AĞIRLIKLANDIRMA (Hard Rules Kaldırıldı!)
-        # Her kırılım doğrusal olmayan ceza puanlarıyla sisteme etki eder
-        fico_skor_puani = (skor - 300) / 550 # 0 ile 1 arası
-        dti_ceza_puani = np.exp(yeni_dti) / np.exp(1) # DTI yükseldikçe logaritmik artan risk
+        # 2. DİNAMİK RİSK AĞIRLIKLANDIRMA
+        fico_skor_puani = (skor - 300) / 550 
+        dti_ceza_puani = np.exp(yeni_dti) / np.exp(1) 
         
         onay_skoru = (fico_skor_puani * 0.40) + ((1 - dti_ceza_puani) * 0.40) + ((yil / 40) * 0.20)
         
@@ -87,6 +84,17 @@ with col2:
         
         onay_olasiligi = np.clip(onay_skoru, 0.01, 0.99)
         karar = 1 if onay_olasiligi >= 0.50 and yeni_dti <= 0.65 else 0
+        
+        # 3. YENİ: Otomatik Kredi Limiti Optimizasyonu (Sınır Testi)
+        maks_guvenli_limit = talep_edilen
+        if karar == 0:
+            # Hedef yeni_dti oranını %45'e çekecek taksiti bulup limiti geriye doğru hesaplıyoruz
+            hedef_taksit = (aylik_gelir * 0.45) - mevcut_aylik_borc
+            if hedef_taksit > 0:
+                maks_guvenli_limit = (hedef_taksit * (1 - (1 + aylik_faiz) ** (-vade))) / aylik_faiz
+                maks_guvenli_limit = max(0.0, maks_guvenli_limit)
+            else:
+                maks_guvenli_limit = 0.0
         
         # Hibrit Altman Z-Skor Revizyonu
         z_score = (skor / 850) * 4.0 + (1 - yeni_dti) * 3.0 + (yil / 10) * 1.5 - (enflasyon_etkisi * 2)
@@ -132,7 +140,33 @@ with col2:
             ax2.set_ylabel("DTI Oranı")
             st.pyplot(fig2)
             
-        # 3. AKSİYONEL İPOTEK VE ERKEN UYARI ROBOTU (3. Açığı Kapatan Kısım)
+        # 4. YENİ: XAI Karar Gerekçelendirme ve Sınır Testi Paneli
+        st.write("---")
+        st.subheader("🧠 Explainable AI (XAI) Risk Analiz Odası & Limit Optimizasyonu")
+        
+        xai_col1, xai_col2 = st.columns(2)
+        with xai_col1:
+            # Kararı en çok neyin etkilediğini bulma (Explainable AI simülasyonu)
+            risk_faktorleri = {
+                "Düşük Kredi Skoru": 750 - skor,
+                "Yüksek Borçluluk (DTI)": yeni_dti * 200,
+                "Makro Enflasyon Baskısı": enflasyon_orani,
+                "Kur Volatilitesi": kur_volatilitesi * 1.5
+            }
+            en_buyuk_risk = max(risk_faktorleri, key=risk_faktorleri.get)
+            st.warning(f"🔍 **AI Tespiti (Kararı Olumsuz Etkileyen En Baskın Faktör):** {en_buyuk_risk}")
+            
+        with xai_col2:
+            if karar == 1:
+                st.info(f"💡 **Limit Optimizasyonu:** Talep edilen tutarın tamamı (${talep_edilen:,.0f}) güvenli alan içindedir.")
+            else:
+                if maks_guvenli_limit > 0:
+                    st.error(f"💡 **Limit Önerisi:** Talep edilen ${talep_edilen:,.0f} onaylanamıyor. Ancak mevcut makro stres koşulları altında bu müşteriye verilebilecek **Maksimum Güvenli Kredi Limiti: ${maks_guvenli_limit:,.0f}**")
+                else:
+                    st.error("💡 **Limit Önerisi:** Müşterinin mevcut borç yükü makro şoklar altında çok yüksek. Güvenli limit: **$0** (Ek teminat bulunmadan finansman sağlanamaz).")
+
+        # Otomatik Tahsis Koşulları & Yapılandırma Robotu
+        st.write(" ")
         st.write("**3. Otomatik Tahsis Koşulları & Yapılandırma Robotu**")
         
         teminat_orani = "%0 (Teminatsız Kredi)"
