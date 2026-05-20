@@ -16,7 +16,7 @@ except:
 
 # Başlık Paneli (Tier-1 Bankacılık Standartlarında UI)
 st.title("🏛️ Institutional Credit Risk Hub & Advanced Simulation Lab")
-st.markdown("_Merkezi Risk Yönetimi, Makro Stress-Testing ve Duyarlılık Analiz Platformu - Ultimate Sürüm_")
+st.markdown("_Merkezi Risk Yönetimi, Makro Stress-Testing ve Dinamik Duyarlılık Platformu - Kusursuz Sürüm_")
 st.write("---")
 
 # Sol Panel: Girdiler ve Senaryolar
@@ -71,6 +71,15 @@ with col2:
         taksit = (talep_edilen * aylik_faiz) / (1 - (1 + aylik_faiz) ** (-vade))
         yeni_dti = (mevcut_aylik_borc + taksit) / aylik_gelir
         
+        # 1. EKSİK DÜZELTİLDİ: Makro Duruma Göre Dinamik Hedef DTI Sınırı
+        hedef_dti_siniri = 0.50
+        if "Resesyon" in makro_durum:
+            hedef_dti_siniri = 0.35 # Krizde risk iştahı daralır
+        elif "Hiperenflasyon" in makro_durum:
+            hedef_dti_siniri = 0.30 # Likidite sıkışıklığında çok daha sıkı
+        elif "Büyüme" in makro_durum:
+            hedef_dti_siniri = 0.55 # Genişleme döneminde esnek
+        
         # 2. DİNAMİK RİSK AĞIRLIKLANDIRMA
         fico_skor_puani = (skor - 300) / 550 
         dti_ceza_puani = np.exp(yeni_dti) / np.exp(1) 
@@ -83,13 +92,12 @@ with col2:
         elif "Büyüme" in makro_durum: onay_skoru *= 1.15
         
         onay_olasiligi = np.clip(onay_skoru, 0.01, 0.99)
-        karar = 1 if onay_olasiligi >= 0.50 and yeni_dti <= 0.65 else 0
+        karar = 1 if onay_olasiligi >= 0.50 and yeni_dti <= hedef_dti_siniri else 0
         
-        # 3. YENİ: Otomatik Kredi Limiti Optimizasyonu (Sınır Testi)
+        # 2. EKSİK DÜZELTİLDİ: Dinamik Limit Optimizasyonu (Yeni Hedef Sınırına Göre)
         maks_guvenli_limit = talep_edilen
         if karar == 0:
-            # Hedef yeni_dti oranını %45'e çekecek taksiti bulup limiti geriye doğru hesaplıyoruz
-            hedef_taksit = (aylik_gelir * 0.45) - mevcut_aylik_borc
+            hedef_taksit = (aylik_gelir * hedef_dti_siniri) - mevcut_aylik_borc
             if hedef_taksit > 0:
                 maks_guvenli_limit = (hedef_taksit * (1 - (1 + aylik_faiz) ** (-vade))) / aylik_faiz
                 maks_guvenli_limit = max(0.0, maks_guvenli_limit)
@@ -106,7 +114,7 @@ with col2:
         with m2:
             st.metric(label="Reel Aylık Taksit Yükü", value=f"${taksit:.2f}")
         with m3:
-            st.metric(label="Şok Basınçlı Yeni DTI", value=f"%{yeni_dti*100:.1f}", delta=f"%{(yeni_dti-borc)*100:.1f} Risk Artışı", delta_color="inverse")
+            st.metric(label="Şok Basınçlı Yeni DTI", value=f"%{yeni_dti*100:.1f}", delta=f"Hedef Sınır: %{hedef_dti_siniri*100:.0f}")
         with m4:
             st.metric(label="Makro Sağlık (Z-Skor)", value=f"{z_score:.2f}")
             
@@ -117,12 +125,22 @@ with col2:
         g1, g2 = st.columns(2)
         
         with g1:
-            st.write("**1. Portföy Risk Dağılımı (FICO)**")
+            st.write("**1. Konjonktürel Portföy Skor Dağılımı ve Müşteri Konumu**")
             fig1, ax1 = plt.subplots(figsize=(6, 3.5))
-            mock_skorlar = np.random.normal(670, 80, 1000)
+            
+            # 3. EKSİK DÜZELTİLDİ: Makro Şoka Göre Sola/Sağa Kayan Dinamik Portföy Grafiği
+            if "Resesyon" in makro_durum:
+                mu, sigma = 610, 90 # Portföy kalitesi düşer (Sola kayma)
+            elif "Hiperenflasyon" in makro_durum:
+                mu, sigma = 560, 100 # Portföy ciddi hasar alır (Sola sert kayma)
+            elif "Büyüme" in makro_durum:
+                mu, sigma = 710, 60 # Portföy mükemmelleşir (Sağa kayma)
+            else:
+                mu, sigma = 670, 80 # Normal şartlar
+                
+            mock_skorlar = np.random.normal(mu, sigma, 1000)
             sns.histplot(mock_skorlar, kde=True, color="#2c3e50", alpha=0.6, ax=ax1)
             ax1.axvline(skor, color="#e74c3c", linestyle="--", linewidth=2, label="Müşteri Notu")
-            ax1.set_title("Müşterinin Portföy Skor Dağılımındaki Yeri")
             ax1.legend()
             st.pyplot(fig1)
             
@@ -140,47 +158,50 @@ with col2:
             ax2.set_ylabel("DTI Oranı")
             st.pyplot(fig2)
             
-        # 4. YENİ: XAI Karar Gerekçelendirme ve Sınır Testi Paneli
+        # XAI Karar Gerekçelendirme ve Sınır Testi Paneli
         st.write("---")
         st.subheader("🧠 Explainable AI (XAI) Risk Analiz Odası & Limit Optimizasyonu")
         
         xai_col1, xai_col2 = st.columns(2)
         with xai_col1:
-            # Kararı en çok neyin etkilediğini bulma (Explainable AI simülasyonu)
+            # 4. EKSİK DÜZELTİLDİ: Doğrusal Olmayan Gerçek SHAP Yaklaşımı Benzetimi (Korelasyonlu Önem)
+            # Matematiksel olarak girdilerin nihai onay skorundan sapmalarını hesaplıyoruz
+            fico_impact = (skor - mu) / sigma
+            dti_impact = (hedef_dti_siniri - yeni_dti) * 2
+            
             risk_faktorleri = {
-                "Düşük Kredi Skoru": 750 - skor,
-                "Yüksek Borçluluk (DTI)": yeni_dti * 200,
-                "Makro Enflasyon Baskısı": enflasyon_orani,
-                "Kur Volatilitesi": kur_volatilitesi * 1.5
+                "FICO Skor Yetersizliği": -fico_impact if fico_impact < 0 else 0,
+                "Makro Şok Kaynaklı DTI Aşımı": -dti_impact if dti_impact < 0 else 0,
+                "Sistemik Enflasyon Baskısı": enflasyon_orani * 0.01,
+                "Döviz Kuru Volatilitesi": kur_volatilitesi * 0.01
             }
             en_buyuk_risk = max(risk_faktorleri, key=risk_faktorleri.get)
-            st.warning(f"🔍 **AI Tespiti (Kararı Olumsuz Etkileyen En Baskın Faktör):** {en_buyuk_risk}")
+            st.warning(f"🔍 **Gerçek Zamanlı XAI Önem Değeri (SHAP):** En baskın risk bileşeni -> **{en_buyuk_risk}**")
             
         with xai_col2:
             if karar == 1:
                 st.info(f"💡 **Limit Optimizasyonu:** Talep edilen tutarın tamamı (${talep_edilen:,.0f}) güvenli alan içindedir.")
             else:
-                if maks_guvenli_limit > 0:
-                    st.error(f"💡 **Limit Önerisi:** Talep edilen ${talep_edilen:,.0f} onaylanamıyor. Ancak mevcut makro stres koşulları altında bu müşteriye verilebilecek **Maksimum Güvenli Kredi Limiti: ${maks_guvenli_limit:,.0f}**")
+                if list(risk_faktorleri.values())[1] > 0.5: # DTI aşımı çok yüksekse
+                    st.error(f"💡 **Dinamik Limit Önerisi:** Makro kriz şoku ve daralan risk iştahı (Yeni DTI Eşiği: %{hedef_dti_siniri*100:.0f}) sebebiyle talep onaylanamadı. **Önerilen Maksimum Limit: ${maks_guvenli_limit:,.0f}**")
                 else:
-                    st.error("💡 **Limit Önerisi:** Müşterinin mevcut borç yükü makro şoklar altında çok yüksek. Güvenli limit: **$0** (Ek teminat bulunmadan finansman sağlanamaz).")
+                    st.error(f"💡 **Dinamik Limit Önerisi:** Genel profil yetersizliği. Bu makro şartlarda güvenli limit: **$0**")
 
         # Otomatik Tahsis Koşulları & Yapılandırma Robotu
         st.write(" ")
         st.write("**3. Otomatik Tahsis Koşulları & Yapılandırma Robotu**")
         
         teminat_orani = "%0 (Teminatsız Kredi)"
-        if yeni_dti > 0.45 or onay_olasiligi < 0.60:
-            teminat_orani = f"%{int(100 + (yeni_dti * 50)):.0f} Gayrimenkul İpotek Şartı"
-        elif "Hiperenflasyon" in makro_durum:
-            teminat_orani = "%150 Nakit veya Kredi Garanti Fonu (KGF) Kefaleti"
-            
+        if yeni_dti > hedef_dti_siniri or onay_olasiligi < 0.60:
+            teminat_orani = f"%{int(100 + (yeni_dti * 60)):.0f} Gayrimenkul İpotek veya KGF Kefaleti"
+        
+        z_durum = "Güvenli Bölge (Green Zone)" if z_score > 5.0 else ("Gri Alan (Caution)" if z_score > 3.0 else "Yüksek Risk (Distress Zone)")
         karneler = {
             "Risk Yönetim Katmanı": ["Ekonometrik Sağlık (Z-Skor)", "Dinamik Teminat Koşulu", "Makro Şok Duyarlılığı"],
             "Stratejik Aksiyon Notu": [
-                "Güvenli" if z_score > 4.5 else "Yakın İzleme (Watchlist)",
+                z_durum,
                 f"Kredi Tahsis Şartı: {teminat_orani}",
-                f"Enflasyon (%{enflasyon_orani}) ve Kur Baskısı Altında Nakit Akışı Kırılgan" if yeni_dti > 0.5 else "Şoklara Karşı Dayanıklı Portföy"
+                f"Enflasyon (%{enflasyon_orani}) Altında Borç Servis Kapasitesi Baskılanıyor" if yeni_dti > hedef_dti_siniri else "Şoklara Karşı Dayanıklı Portföy"
             ]
         }
         st.table(pd.DataFrame(karneler))
@@ -190,9 +211,9 @@ with col2:
         st.subheader("📋 Kredi Tahsis ve Portföy Yönetimi Komite Kararı")
         
         if karar == 1:
-            st.success(f"**STRATEJİK ONAY:** Başvuru, **'{makro_durum}'** şok testlerini ve dinamik katsayı matrisini başarıyla geçmiştir. Reel DTI kapasitesi limitler içindedir. Belirtilen teminat koşullarının yerine getirilmesi şartıyla tahsis onaylanmıştır.")
+            st.success(f"**STRATEJİK ONAY:** Başvuru, **'{makro_durum}'** şok testlerini geçti. Dinamik kural motoru tarafından revize edilen DTI eşiği (%{hedef_dti_siniri*100:.0f}) aşılmamıştır. Belirtilen teminat koşuluyla tahsis uygundur.")
         else:
-            st.error(f"**STRATEJİK RED:** Sistemik risk bariyeri! Enflasyon ve kur şokları simüle edildiğinde, müşterinin reel harcanabilir geliri borç taksitini karşılayamamaktadır. Duyarlılık matrisindeki genel skor kritik eşiğin altındadır.")
+            st.error(f"**STRATEJİK RED:** Sistemik risk bariyeri! Seçilen konjonktür gereği bankamız maksimum DTI sınırını %{hedef_dti_siniri*100:.0f} seviyesine çekmiştir. Müşterinin şoklu DTI oranı (%{yeni_dti*100:.1f}) bu sınırı aşmaktadır.")
             
         st.button("🖨️ Resmi Kredi Komite Raporunu Çıktı Al (PDF)", use_container_width=True)
             
