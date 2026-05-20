@@ -6,7 +6,7 @@ import matplotlib.pyplot as plt
 import seaborn as sns
 
 # Kurumsal Sayfa Mimarisi
-st.set_page_config(page_title="Risk Matrix Lab", layout="wide")
+st.set_page_config(page_title="Advanced Risk Matrix", layout="wide")
 
 # Model Yükleme
 try:
@@ -15,8 +15,8 @@ except:
     model = None
 
 # Başlık Paneli (Tier-1 Bankacılık Standartlarında UI)
-st.title("🛡️ Institutional Credit Risk Hub & Advanced Simulation Lab")
-st.markdown("_Merkezi Risk Yönetimi, Makro Stress-Testing ve Duyarlılık Analiz Platformu_")
+st.title("🏛️ Institutional Credit Risk Hub & Advanced Simulation Lab")
+st.markdown("_Merkezi Risk Yönetimi, Makro Stress-Testing ve Duyarlılık Analiz Platformu - V3_")
 st.write("---")
 
 # Sol Panel: Girdiler ve Senaryolar
@@ -25,14 +25,18 @@ col1, col2 = st.columns([1, 2])
 with col1:
     st.header("🎛️ Senaryo & Müşteri Matrisi")
     
-    st.subheader("🌐 1. Makroekonomik Senaryo")
+    st.subheader("🌐 1. Makroekonomik & Piyasa Şokları")
     makro_durum = st.selectbox(
         "Stres Testi Konjonktürü", 
-        ["Normal Ekonomik Şartlar", "Şok / Sistemik Resesyon (Sıkılaşma)", "Hiperenflasyon / Likidite Sıkışıklığı", "Ekonomik Büyüme (Genişleme)"]
+        ["Normal Ekonomik Şartlar", "Sistemik Resesyon (Daralma)", "Hiperenflasyon & Döviz Şoku", "Ekonomik Büyüme (Genişleme)"]
     )
     
+    # Enflasyon ve Kur Şoku Dinamik Girdileri
+    enflasyon_orani = st.slider("Yıllık Enflasyon Beklentisi (%)", 10, 150, value=40 if "Normal" in makro_durum else (120 if "Hiperenflasyon" in makro_durum else 70))
+    kur_volatilitesi = st.slider("Döviz Kuru Oynaklığı (Aylık %)", 1, 50, value=5 if "Normal" in makro_durum else (35 if "Hiperenflasyon" in makro_durum else 15))
+    
     st.write("---")
-    st.subheader("📊 2. Finansal Profil Kontrolleri")
+    st.subheader("📊 2. Müşteri Finansal Profili")
     gelir = st.number_input("Yıllık Brüt Gelir ($)", 20000, 1000000, value=95000, step=5000)
     skor = st.slider("Kredi Skoru (FICO)", 300, 850, value=670)
     borc = st.slider("Mevcut DTI (Borç/Gelir Oranı)", 0.0, 1.0, value=0.30, step=0.01)
@@ -52,51 +56,51 @@ with col2:
     st.header("📊 Kurumsal Karar ve Analitik Çıktılar")
     
     if analiz_butonu:
-        # Finansal Matematik Çekirdeği
-        aylik_gelir = gelir / 12
-        mevcut_aylik_borc = aylik_gelir * borc
+        # 1. MAKRO ŞOK ETKİSİ HESAPLAMA MOTORU (Açığı Kapatan İktisadi Kısım)
+        # Enflasyon harcanabilir geliri eritir, kur şoku borçluluk algısını artırır
+        enflasyon_etkisi = (enflasyon_orani / 100) * 0.15
+        kur_etkisi = (kur_volatilitesi / 100) * 0.20
+        
+        aylik_gelir = (gelir / 12) * (1 - enflasyon_etkisi) # Enflasyondan arındırılmış reel harcanabilir gelir
+        mevcut_aylik_borc = (gelir / 12) * borc * (1 + kur_etkisi) # Kur baskılı borç yükü
         
         # Dinamik Faiz Algoritması
         base_faiz = 0.10 if kredi_turu == "Ticari Kredi" else (0.07 if kredi_turu == "Konut Kredisi" else 0.14)
-        if "Resesyon" in makro_durum or "Hiperenflasyon" in makro_durum:
-            base_faiz += 0.05
-        elif "Büyüme" in makro_durum:
-            base_faiz -= 0.01
+        base_faiz += (enflasyon_orani / 200) # Enflasyon primi faize eklenir
             
         # Taksit ve Yeni DTI Hesaplama
         aylik_faiz = base_faiz / 12
         taksit = (talep_edilen * aylik_faiz) / (1 - (1 + aylik_faiz) ** (-vade))
         yeni_dti = (mevcut_aylik_borc + taksit) / aylik_gelir
         
-        # Hibrit Altman Z-Skor Benzetimi (Finansal Sağlık İndeksi)
-        z_score = (skor / 850) * 4.0 + (1 - yeni_dti) * 3.0 + (yil / 10) * 1.5
+        # 2. DİNAMİK RİSK AĞIRLIKLANDIRMA (Hard Rules Kaldırıldı!)
+        # Her kırılım doğrusal olmayan ceza puanlarıyla sisteme etki eder
+        fico_skor_puani = (skor - 300) / 550 # 0 ile 1 arası
+        dti_ceza_puani = np.exp(yeni_dti) / np.exp(1) # DTI yükseldikçe logaritmik artan risk
         
-        # Makro Çarpan
-        risk_multiplier = 1.0
-        if "Resesyon" in makro_durum: risk_multiplier = 0.65
-        elif "Hiperenflasyon" in makro_durum: risk_multiplier = 0.50
-        elif "Büyüme" in makro_durum: risk_multiplier = 1.25
+        onay_skoru = (fico_skor_puani * 0.40) + ((1 - dti_ceza_puani) * 0.40) + ((yil / 40) * 0.20)
         
-        # Skorlama Algoritması
-        base_prob = 0.55
-        if skor > 740: base_prob += 0.25
-        if skor < 550: base_prob -= 0.40
-        if yeni_dti > 0.45: base_prob -= 0.35
-        if yil > 5: base_prob += 0.05
+        # Konjonktürel Sıkılaştırma Çarpanı
+        if "Resesyon" in makro_durum: onay_skoru *= 0.80
+        elif "Hiperenflasyon" in makro_durum: onay_skoru *= 0.65
+        elif "Büyüme" in makro_durum: onay_skoru *= 1.15
         
-        onay_olasiligi = np.clip(base_prob * risk_multiplier, 0.01, 0.99)
-        karar = 1 if onay_olasiligi >= 0.50 and yeni_dti <= 0.60 else 0
+        onay_olasiligi = np.clip(onay_skoru, 0.01, 0.99)
+        karar = 1 if onay_olasiligi >= 0.50 and yeni_dti <= 0.65 else 0
+        
+        # Hibrit Altman Z-Skor Revizyonu
+        z_score = (skor / 850) * 4.0 + (1 - yeni_dti) * 3.0 + (yil / 10) * 1.5 - (enflasyon_etkisi * 2)
         
         # KPI Metrik Kartları
         m1, m2, m3, m4 = st.columns(4)
         with m1:
             st.metric(label="Kredi Onay İhtimali", value=f"%{onay_olasiligi*100:.1f}")
         with m2:
-            st.metric(label="Aylık Taksit Yükü", value=f"${taksit:.2f}")
+            st.metric(label="Reel Aylık Taksit Yükü", value=f"${taksit:.2f}")
         with m3:
-            st.metric(label="Kredi Sonrası DTI", value=f"%{yeni_dti*100:.1f}", delta=f"%{(yeni_dti-borc)*100:.1f}")
+            st.metric(label="Şok Basınçlı Yeni DTI", value=f"%{yeni_dti*100:.1f}", delta=f"%{(yeni_dti-borc)*100:.1f} Risk Artışı", delta_color="inverse")
         with m4:
-            st.metric(label="Finansal Sağlık (Z-Skor)", value=f"{z_score:.2f}")
+            st.metric(label="Makro Sağlık (Z-Skor)", value=f"{z_score:.2f}")
             
         st.progress(float(onay_olasiligi))
         st.write(" ")
@@ -115,26 +119,35 @@ with col2:
             st.pyplot(fig1)
             
         with g2:
-            st.write("**2. Vadeye Göre Risk Duyarlılık Haritası (Sensitivity Heatmap)**")
+            st.write("**2. Vade & Borç Duyarlılık Matrisi (Aksiyonel Teminat Koşulları)**")
             fig2, ax2 = plt.subplots(figsize=(6, 3.5))
-            # Farklı vade ve borç oranlarında risk matrisi simülasyonu
             vade_ekseni = [24, 48, 72, 96, 120]
             dti_ekseni = [0.2, 0.4, 0.6, 0.8]
             matrix_data = np.zeros((len(dti_ekseni), len(vade_ekseni)))
             for i, d in enumerate(dti_ekseni):
                 for j, v in enumerate(vade_ekseni):
-                    matrix_data[i, j] = np.clip(onay_olasiligi * (1 - (d*0.4) - (v*0.002)), 0, 1)
-            sns.heatmap(matrix_data, xticklabels=vade_ekseni, yticklabels=dti_ekseni, annot=True, cmap="RdYlGn", fmt=".2f", ax=ax2)
+                    matrix_data[i, j] = np.clip(onay_olasiligi * (1 - (d*0.5) - (v*0.003)), 0, 1)
+            sns.heatmap(matrix_data, xticklabels=vade_ekseni, yticklabels=dti_ekseni, annot=True, cmap="YlOrRd_r", fmt=".2f", ax=ax2)
             ax2.set_xlabel("Vade (Ay)")
             ax2.set_ylabel("DTI Oranı")
             st.pyplot(fig2)
             
-        # Finansal Sağlık Sınıflandırma Tablosu
-        st.write("**3. Erken Uyarı Sinyalleri Karnesi**")
-        z_durum = "Güvenli Bölge (Green Zone)" if z_score > 5.5 else ("Gri Alan (Caution)" if z_score > 3.5 else "Yüksek Risk (Distress Zone)")
+        # 3. AKSİYONEL İPOTEK VE ERKEN UYARI ROBOTU (3. Açığı Kapatan Kısım)
+        st.write("**3. Otomatik Tahsis Koşulları & Yapılandırma Robotu**")
+        
+        teminat_orani = "%0 (Teminatsız Kredi)"
+        if yeni_dti > 0.45 or onay_olasiligi < 0.60:
+            teminat_orani = f"%{int(100 + (yeni_dti * 50)):.0f} Gayrimenkul İpotek Şartı"
+        elif "Hiperenflasyon" in makro_durum:
+            teminat_orani = "%150 Nakit veya Kredi Garanti Fonu (KGF) Kefaleti"
+            
         karneler = {
-            "Risk Katmanı": ["Ekonometrik Sağlık (Z-Skor)", "Kaldıraç Durumu (Leverage)", "Vade Uyumsuzluğu"],
-            "Durum Değerlendirmesi": [z_durum, "Sınır Değer Aşılmadı" if yeni_dti < 0.50 else "Aşırı Borçlanma Risk", "Uyumlu" if vade <= 60 else "Uzun Vade Likidite Riski"]
+            "Risk Yönetim Katmanı": ["Ekonometrik Sağlık (Z-Skor)", "Dinamik Teminat Koşulu", "Makro Şok Duyarlılığı"],
+            "Stratejik Aksiyon Notu": [
+                "Güvenli" if z_score > 4.5 else "Yakın İzleme (Watchlist)",
+                f"Kredi Tahsis Şartı: {teminat_orani}",
+                f"Enflasyon (%{enflasyon_orani}) ve Kur Baskısı Altında Nakit Akışı Kırılgan" if yeni_dti > 0.5 else "Şoklara Karşı Dayanıklı Portföy"
+            ]
         }
         st.table(pd.DataFrame(karneler))
             
@@ -143,11 +156,10 @@ with col2:
         st.subheader("📋 Kredi Tahsis ve Portföy Yönetimi Komite Kararı")
         
         if karar == 1:
-            st.success(f"**STRATEJİK ONAY:** Başvuru, **'{makro_durum}'** parametreleri altında yürütülen stres testini ve duyarlılık analizini geçmiştir. Hesaplanan Finansal Sağlık İndeksi ({z_score:.2f}) güvenli bölgededir. Tahsis sürecine engel bir bulguya rastlanmamıştır.")
+            st.success(f"**STRATEJİK ONAY:** Başvuru, **'{makro_durum}'** şok testlerini ve dinamik katsayı matrisini başarıyla geçmiştir. Reel DTI kapasitesi limitler içindedir. Belirtilen teminat koşullarının yerine getirilmesi şartıyla tahsis onaylanmıştır.")
         else:
-            st.error(f"**STRATEJİK RED:** Sistemik risk uyarısı! Özellikle **'{makro_durum}'** senaryosunda müşterinin duyarlılık matrisindeki başarı oranı kritik seviyelere düşmektedir. Portföy risk dengesi açısından kredilendirme uygun bulunmamıştır.")
+            st.error(f"**STRATEJİK RED:** Sistemik risk bariyeri! Enflasyon ve kur şokları simüle edildiğinde, müşterinin reel harcanabilir geliri borç taksitini karşılayamamaktadır. Duyarlılık matrisindeki genel skor kritik eşiğin altındadır.")
             
-        # Proje Raporlama Özelliği (Mülakat Sürprizi)
         st.button("🖨️ Resmi Kredi Komite Raporunu Çıktı Al (PDF)", use_container_width=True)
             
     else:
